@@ -1,0 +1,7 @@
+crewai==0.130.0
+fastapi
+uvicorn
+langchain-community
+pypdf
+ollama
+python-dotenv
