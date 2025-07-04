@@ -1,224 +1,183 @@
-```markdown
-# Blood Test Report Analysis System
+# Blood Test Report Analysis
 
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-green.svg)](https://fastapi.tiangolo.com/)
-[![CrewAI](https://img.shields.io/badge/CrewAI-0.13.0-orange.svg)](https://www.crewai.com/)
+## Overview
+This FastAPI application processes blood test reports using a custom CrewAI implementation that supports various LLMs (Llama 3 via Ollama, OpenAI, Anthropic, etc.). The system uses specialized AI agents to provide comprehensive health analysis. This solution fixes numerous bugs from the original implementation and provides a robust, production-ready API.
 
-## Bugs Found and Fixes
+## Comprehensive Bug Fixes
 
 ### Critical Architecture Issues
 1. **Undefined LLM Variable**  
-   - **Problem**: `llm = llm` caused immediate failure
-   - **Fix**: Implemented custom execution flow bypassing CrewAI's LLM system
-   - **Files Changed**: `custom_crew.py`, `main.py`
+   The original code contained `llm = llm` which caused immediate failure since `llm` was never defined.  
+   **Fix**: Implemented a custom execution flow that bypasses CrewAI's LLM system entirely.
 
 2. **CrewAI Internal Conflicts**  
-   - **Problem**: "LLM Provider NOT provided" errors
-   - **Fix**: Complete bypass of CrewAI's LiteLLM integration
-   - **Files Changed**: `custom_crew.py`
+   Persistent "LLM Provider NOT provided" errors due to CrewAI's LiteLLM integration conflicts.  
+   **Fix**: Created a complete custom execution pipeline that avoids CrewAI's internal LLM handling.
 
 3. **Tool Implementation Flaws**  
-   - **Problem**: Missing tool decorator and PDFLoader imports
-   - **Fix**: Proper BaseTool implementation with content normalization
-   - **Files Changed**: `tools.py`
-   ```python
-   # Before
-   class BloodTestReportTool():  # No base class
-   
-   # After
-   class BloodTestReportTool(BaseTool):  # Proper inheritance
-       def _run(self, path: str) -> str:
-           # Added content cleaning
-           content = re.sub(r'\n{3,}', '\n\n', content)
-   ```
+   - Missing `@tool` decorator and improper base class inheritance  
+   - PDFLoader not imported causing runtime crashes  
+   **Fix**: Proper `BaseTool` implementation with Pydantic schema validation and explicit imports.
 
 ### Agent & Task System Defects
 4. **Single Agent Overload**  
-   - **Problem**: Doctor agent handling all tasks
-   - **Fix**: Specialized task assignments
-   - **Files Changed**: `task.py`
+   All tasks were incorrectly assigned to the Doctor agent.  
+   **Fix**: Implemented specialized task assignments:
    ```python
-   # Before
-   help_patients = Task(agent=doctor)
-   nutrition_analysis = Task(agent=doctor)  # Wrong assignment
-   
-   # After
-   verification = Task(agent=verifier)  # Correct specialist
+   verification = Task(agent=verifier)
    nutrition_analysis = Task(agent=nutritionist)
    ```
 
 5. **Unprofessional Personas**  
-   - **Problem**: Agents encouraged misinformation
-   - **Fix**: Evidence-based professional profiles
-   - **Files Changed**: `agents.py`
+   Agents had unrealistic backstories encouraging misinformation.  
+   **Fix**: Revised to evidence-based professional profiles:
    ```python
-   # Before
-   "You love to diagnose rare diseases from simple symptoms"
-   
-   # After
-   "You are an experienced doctor with 20+ years in clinical practice"
+   backstory=(
+       "You are a certified clinical nutritionist with 15+ years of experience. "
+       "You provide science-backed dietary recommendations based on blood reports."
+   )
    ```
 
+6. **Delegation Mismanagement**  
+   Incorrect `allow_delegation` settings prevented proper collaboration.  
+   **Fix**: Configured delegation based on agent specialization needs.
+
 ### File Processing Problems
-6. **Temporary File Accumulation**  
-   - **Problem**: Files remained after processing
-   - **Fix**: UUID-based storage with guaranteed cleanup
-   - **Files Changed**: `main.py`
+7. **Temporary File Accumulation**  
+   Uploaded files remained in `data/` directory after processing.  
+   **Fix**: Implemented UUID-based storage with guaranteed cleanup:
    ```python
    finally:
        if os.path.exists(file_path):
-           os.remove(file_path)  # Guaranteed cleanup
+           os.remove(file_path)
    ```
 
-7. **Missing File Validation**  
-   - **Problem**: Non-PDF files caused crashes
-   - **Fix**: Added strict file type validation
-   - **Files Changed**: `main.py`
+8. **Missing File Validation**  
+   Non-PDF files could be uploaded causing processing errors.  
+   **Fix**: Added strict file type validation:
    ```python
    if not file.filename.lower().endswith('.pdf'):
        raise HTTPException(400, "Only PDF files accepted")
    ```
 
-### API & Execution Flaws
-8. **Inconsistent Variable Formatting**  
-   - **Problem**: Prompt formatting mismatches
-   - **Fix**: Unified input handling
-   - **Files Changed**: `custom_crew.py`
-
-9. **Resource Management Gaps**  
-   - **Problem**: Potential infinite loops
-   - **Fix**: Added execution constraints
-   - **Files Changed**: `agents.py`
+9. **Messy Text Extraction**  
+   PDF extraction produced unreadable content with excessive whitespace.  
+   **Fix**: Implemented content normalization:
    ```python
-   max_iter=5,  # Prevent infinite loops
-   max_rpm=10   # Rate limiting
+   content = re.sub(r'\n{3,}', '\n\n', content)
+   content = re.sub(r' {2,}', ' ', content)
    ```
 
-## Setup and Usage Instructions
+### API & Execution Flaws
+10. **Inconsistent Variable Formatting**  
+    Prompts used different formatting styles causing input mismatches.  
+    **Fix**: Unified input handling with `.format(**inputs)`.
+
+11. **Generic Error Handling**  
+    Errors provided no actionable debugging information.  
+    **Fix**: Added detailed traceback logging:
+    ```python
+    except Exception as e:
+        traceback.print_exc()
+        return f"Crew execution failed: {str(e)}"
+    ```
+
+12. **Resource Management Gaps**  
+    No constraints on agent execution causing potential infinite loops.  
+    **Fix**: Added execution limits:
+    ```python
+    max_iter=5,  # Prevent infinite loops
+    max_rpm=10   # Rate limiting
+    ```
+
+13. **API Response Inconsistency**  
+    Response structure varied between successful and failed executions.  
+    **Fix**: Standardized JSON output format:
+    ```json
+    {
+      "status": "success|error",
+      "query": "User query",
+      "analysis": "Content",
+      "file_processed": "filename.pdf"
+    }
+    ```
+
+### Content Quality Issues
+14. **Prompt Engineering Defects**  
+    Vague task descriptions led to low-quality outputs.  
+    **Fix**: Implemented detailed professional prompts:
+    ```python
+    description="Provide science-based nutrition advice...",
+    expected_output="Personalized nutrition plan with references"
+    ```
+
+15. **Tool Argument Confusion**  
+    Tools expected hardcoded paths instead of uploaded files.  
+    **Fix**: Implemented dynamic path handling:
+    ```python
+    inputs = {'query': query, 'file_path': file_path}
+    ```
+
+## Setup Instructions
 
 ### Prerequisites
 - Python 3.10+
-- [Ollama](https://ollama.com/) installed (for local LLMs)
-- API key for cloud LLMs (OpenAI/Anthropic)
+- LLM Access:
+  - **Local**: Install [Ollama](https://ollama.com/)
+  - **Cloud**: Obtain API key (OpenAI/Anthropic)
 
 ### Installation
 ```bash
-# Clone repository
 git clone https://github.com/yourusername/blood-test-analysis.git
 cd blood-test-analysis
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Set up environment
-cp .env.example .env
+# For local LLMs:
+ollama pull llama3
 ```
 
-### Configuration (.env file)
+### Configuration (.env)
 ```ini
 # Choose one LLM provider:
-LLM_TYPE=ollama       # Options: openai|anthropic|ollama
-OLLAMA_MODEL=llama3   # Local model name
+LLM_TYPE=ollama       # openai|anthropic|ollama
+OLLAMA_MODEL=llama3
 
-# For cloud providers (uncomment and fill):
-# OPENAI_API_KEY=your_api_key_here
-# OPENAI_MODEL=gpt-4-turbo
-# ANTHROPIC_API_KEY=your_api_key_here
+# For cloud providers:
+# OPENAI_API_KEY=your_key
+# ANTHROPIC_API_KEY=your_key
 ```
 
 ### Running the Application
 ```bash
-# Start local LLM service (in separate terminal)
-ollama serve
-
-# Start API server
 uvicorn main:app --reload --port 8000
-```
-
-### Testing the System
-1. Create a test PDF file in the repository root
-2. Use the test script:
-```bash
-python tests/test_api.py
 ```
 
 ## API Documentation
 
-### Base URL
-`http://localhost:8000`
-
-### Endpoints
-
-#### POST /analyze
-Analyzes blood test reports and provides health recommendations
-
-**URL:** `http://localhost:8000/analyze`
-
-**Method:** `POST`
-
-**Form Data:**
-| Parameter | Type | Description | Required |
-|-----------|------|-------------|----------|
-| `file` | File | PDF blood test report | Yes |
-| `query` | String | Analysis request | No |
-
-**Success Response:**
-```json
-{
-  "status": "success",
-  "query": "User's original query",
-  "analysis": "Multipart analysis report",
-  "file_processed": "original_filename.pdf"
-}
-```
-
-**Error Response:**
-```json
-{
-  "detail": "Error message describing the issue"
-}
-```
-
-**Example Request using curl:**
+### POST /analyze
+**Request:**
 ```bash
 curl -X POST "http://localhost:8000/analyze" \
   -F "file=@blood_test.pdf" \
-  -F "query='Analyze my cholesterol levels'"
+  -F "query='Explain my cholesterol levels'"
 ```
 
-**Example Response:**
+**Response:**
 ```json
 {
   "status": "success",
-  "query": "Analyze my cholesterol levels",
-  "analysis": "## Senior Doctor\nLDL cholesterol levels at 150 mg/dL...",
+  "query": "Explain my cholesterol levels",
+  "analysis": "## Senior Doctor\n...\n## Nutrition Guru\n...",
   "file_processed": "blood_test.pdf"
 }
 ```
 
-### Common Status Codes
-| Code | Description |
-|------|-------------|
-| 200 | Successful analysis |
-| 400 | Invalid file type or missing file |
-| 500 | Internal server error |
+## Agent Ecosystem
 
-## Agent Reference
+| Agent | Role | Key Improvements |
+|-------|------|------------------|
+| **Senior Doctor** | Medical diagnosis | Evidence-based analysis, proper condition identification |
+| **Report Verifier** | Document validation | Actual verification logic, inconsistency detection |
+| **Nutritionist** | Dietary planning | Science-backed recommendations, removed sales focus |
+| **Exercise Specialist** | Fitness planning | Safety-first approach, personalized programs |
 
-| Agent | Inputs | Outputs | Tools |
-|-------|--------|---------|-------|
-| **Senior Doctor** | Blood report PDF, User query | Medical analysis | BloodTestReportTool |
-| **Report Verifier** | Blood report PDF | Verification status | BloodTestReportTool |
-| **Nutritionist** | Blood report data | Nutrition plan | BloodTestReportTool |
-| **Exercise Specialist** | Blood report data | Exercise program | BloodTestReportTool |
-
-## Troubleshooting
-- **LLM Connection Issues**: Verify Ollama is running (`ollama serve`)
-- **PDF Processing Errors**: Ensure files are valid PDFs
-- **Module Not Found**: Run `pip install -r requirements.txt`
-- **Rate Limiting Errors**: Increase `max_rpm` in agent definitions
-
-## License
-This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
-```
